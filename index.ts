@@ -9,7 +9,7 @@ import {
   apiFromEndpoints,
   parseOpenAPISchema,
   generateTypeDefs,
-} from "./src/buildCode";
+} from "./src/parser";
 import { startLoad, stopLoad } from "./src/load";
 
 const log = console.log;
@@ -24,11 +24,18 @@ const options = commandLineArgs([
     type: String,
     multiple: false,
   },
+  {
+    name: "outDir",
+    alias: "o",
+    type: String,
+    multiple: false,
+  },
 ]) as {
   src: string;
+  outDir: string;
 };
 
-type Method = "get" | "post" | "put" | "delete" | "patch";
+const outputDir = `${process.cwd()}/${options.outDir}`;
 
 const fetchOpenApiSpec = async () => {
   if (!options.src) {
@@ -36,18 +43,43 @@ const fetchOpenApiSpec = async () => {
     process.exit(1);
   }
 
-  const spec = await fetch(options.src);
-  return await spec.text();
+  if (options.src.startsWith("http")) {
+    try {
+      const spec = await fetch(options.src);
+      return await spec.text();
+    } catch (err) {
+      log("Failed to fetch open-api spec ⛔️");
+      log("Please provide a valid open-api spec");
+      logDivider();
+      log(err);
+      logDivider();
+      process.exit(1);
+    }
+  }
+  try {
+    const file = Bun.file(options.src);
+    return await file.text();
+  } catch (err) {
+    log("Failed to read open-api spec ⛔️");
+    log("Please provide a valid open-api spec");
+    logDivider();
+    log(err);
+    logDivider();
+    process.exit(1);
+  }
 };
 
-const parseOpenApiSpec = async (spec: string) => {
+const openApiStringToObject = async (spec: string) => {
   const res = {
     type: "JSON",
     data: null as null | OpenAPIV3_1.Document,
   };
   try {
-    res.data = JSON.parse(spec);
-    log("Parsed open-api spec as JSON ✅");
+    const parsedJson = JSON.parse(spec);
+    const resolvedJson = await SwaggerClient.resolve({
+      spec: parsedJson,
+    });
+    res.data = resolvedJson.spec;
   } catch (err) {
     log("Failed to parse open-api spec as JSON ⛔️");
     log("Trying to parse as YAML...");
@@ -79,19 +111,18 @@ async function writeTypes(typeDefs: Record<string, string>) {
     }, ""),
     { parser: "typescript" }
   );
-  Bun.write("./out/types.ts", formattedTypes);
+  Bun.write(`${outputDir}/types.ts`, formattedTypes);
 }
 
 logDivider();
-log("Fetching open-api spec");
-startLoad();
+startLoad("Fetching openapi spec...");
 fetchOpenApiSpec()
   .then(async (spec) => {
     stopLoad("Fetched openapi spec ✅");
     logDivider();
 
     startLoad("Parsing...");
-    const parsed = await parseOpenApiSpec(spec);
+    const parsed = await openApiStringToObject(spec);
     const endpoints = await parseOpenAPISchema(parsed.data);
     stopLoad("Parsed openapi spec ✅");
 
@@ -120,13 +151,13 @@ fetchOpenApiSpec()
     `,
       { parser: "typescript" }
     );
-    Bun.write(`./out/baseApi.ts`, baseApi);
+    Bun.write(`${outputDir}/baseApi.ts`, baseApi);
     stopLoad("Built base api ✅");
 
     startLoad("Building APIs...");
     const apis = await apiFromEndpoints(endpoints);
     apis.forEach((api) => {
-      Bun.write(`./out/${api.name}.ts`, api.code);
+      Bun.write(`${outputDir}/${api.name}.ts`, api.code);
     });
     stopLoad("Built APIs ✅");
 
@@ -140,8 +171,6 @@ fetchOpenApiSpec()
     logDivider();
   })
   .catch((err) => {
-    stopLoad(
-      "Failed to fetch open-api spec. Please enter a valid URL!"
-    );
-    log(logDivider(), log(err));
+    log("Failed generate RTK Query endpoints ⛔️");
+    log(err);
   });

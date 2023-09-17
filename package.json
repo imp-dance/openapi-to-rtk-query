@@ -6,9 +6,10 @@
     "blup": "./dist/index.js"
   },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir=dist --target=node",
-    "blup": "bunx --bun blup",
-    "prepublishOnly": "npm run build"
+    "build": "bun build ./index.ts --outdir=dist --target=node",
+    "blup": "bun blup",
+    "prepublishOnly": "npm run build",
+    "run-local": "rm -r ./out && mkdir ./out; bunx --bun blup --src './local-test.yml' --outDir './out'"
   },
   "devDependencies": {
     "@reduxjs/toolkit": "^1.9.5",
@@ -18,6 +19,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
+    "@stoplight/json-ref-resolver": "^3.1.6",
     "@types/command-line-args": "^5.2.1",
     "command-line-args": "^5.2.1",
     "loading-cli": "^1.1.0",

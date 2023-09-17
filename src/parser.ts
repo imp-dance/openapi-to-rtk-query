@@ -1,27 +1,43 @@
 import { OpenAPIV3_1 } from "openapi-types";
-import SwaggerClient from "swagger-client";
 import * as prettier from "prettier";
 import { firstLetterLower, firstLetterUpper } from "./utils";
 
-function summaryToTitle(summary: string) {
-  return summary
-    .split(" ")
-    .map((word, i) => {
-      if (i === 0) {
-        return word.toLowerCase();
-      }
-      return word[0].toUpperCase() + word.slice(1).toLowerCase();
-    })
-    .map((word) => word.replace(/[^a-zA-Z0-9]/g, ""))
-    .join("");
+function operationToTitle(
+  operation: NonNullable<
+    NonNullable<OpenAPIV3_1.Document["paths"]>["/"]
+  >["get"],
+  path: string,
+  method?: string
+) {
+  if (operation?.summary) {
+    return operation.summary
+      .split(" ")
+      .map((word, i) => {
+        if (i === 0) {
+          return word.toLowerCase();
+        }
+        return (
+          word[0].toUpperCase() + word.slice(1).toLowerCase()
+        );
+      })
+      .map((word) => word.replace(/[^a-zA-Z0-9]/g, ""))
+      .join("");
+  } else {
+    return `${method}${firstLetterUpper(
+      path.split("/").filter(Boolean).join("")
+    )}`;
+  }
 }
 
 function typeFromSchema(apiSchema: any): string {
   function convertType(schema: any): string {
     if (schema === undefined) {
-      return "any";
+      return "unknown";
     }
-    if (schema.type === "object" && schema.properties) {
+    if (
+      (schema.type === "object" && schema.properties) ||
+      (!schema.type && schema.properties)
+    ) {
       const properties = Object.keys(schema.properties).map(
         (propertyName) => {
           const propertySchema = schema.properties[propertyName];
@@ -44,7 +60,7 @@ function typeFromSchema(apiSchema: any): string {
     } else {
       return schema.type === "integer"
         ? "number"
-        : schema.type || "any";
+        : schema.type || "unknown";
     }
   }
 
@@ -66,10 +82,16 @@ export function generateTypeDefs(
 
     for (const method in pathData) {
       const operation = pathData[method as "get"]!;
-      const title = summaryToTitle(operation.summary!);
-      operation.tags?.forEach((tag) => {
+      const title = operationToTitle(operation!, path, method);
+      const operationTags = operation.tags ?? [
+        path.startsWith("/")
+          ? path.split("/")[1]
+          : path.split("/")[0],
+      ];
+      operationTags.forEach((tag) => {
         const responseSchema = (
-          operation.responses?.[200] as any
+          (operation.responses?.[200] ??
+            operation.responses?.[201]) as any
         )?.content?.["application/json"]?.schema;
         const responseType = typeFromSchema(responseSchema);
 
@@ -111,7 +133,19 @@ export async function parseOpenAPISchema(
   apiSchema: OpenAPIV3_1.Document
 ) {
   const builder: ParsedOpenApiSpec = {};
-  const tags = apiSchema.tags?.map((tag) => tag.name) ?? [];
+  const tags =
+    apiSchema.tags?.map((tag) => tag.name) ??
+    Object.keys(apiSchema.paths ?? {}).map((path) =>
+      path.startsWith("/")
+        ? path.split("/")[1]
+        : path.split("/")[0]
+    );
+
+  if (tags.length === 0) {
+    console.warn(
+      "No tags found in schema, trying to organize by first path segment"
+    );
+  }
   tags.forEach((tag) => {
     builder[tag] = {
       queries: [],
@@ -120,7 +154,6 @@ export async function parseOpenAPISchema(
       types: [],
     };
   });
-
   for (const path in apiSchema.paths) {
     const paramsFromPath = path.matchAll(/{(.*?)}/g);
     const params = Array.from(paramsFromPath).map(
@@ -131,19 +164,25 @@ export async function parseOpenAPISchema(
     for (const method in apiSchema.paths[path]) {
       const operation =
         apiSchema.paths[path]?.[method as "get"]!;
-      const title = summaryToTitle(operation.summary!);
+      const title = operationToTitle(operation!, path, method);
 
       const tagsAttr =
         method === "get" ? "providesTags" : "invalidatesTags";
       const builderMethod =
         method === "get" ? "query" : "mutation";
 
-      operation.tags?.forEach((tag) => {
+      const operationTags = operation.tags ?? [
+        path.startsWith("/")
+          ? path.split("/")[1]
+          : path.split("/")[0],
+      ];
+      operationTags?.forEach((tag) => {
         if (!builder[tag].tags.includes(tag)) {
           builder[tag].tags.push(tag);
         }
         const responseSchema = (
-          operation.responses?.[200] as any
+          (operation.responses?.[200] ??
+            operation.responses?.[201]) as any
         )?.content?.["application/json"]?.schema;
 
         const bodySchema = (operation.requestBody as any)
@@ -186,7 +225,7 @@ export async function parseOpenAPISchema(
       method: '${method.toUpperCase()}',
       ${bodySchema ? `body: args?._body` : ""}
     }),
-    // ${tagsAttr}: () => ['${operation.tags?.join("', '")}'],
+    ${tagsAttr}: () => ['${operationTags.join("', '")}'],
   }),\n`,
         });
       });
@@ -205,29 +244,68 @@ export async function apiFromEndpoints(
   }[] = [];
   for (const key of Object.keys(endpoints)) {
     const apiName = `${firstLetterLower(key)}Api`;
+    const filterDuplicates = (
+      acc: { title: string; code: string }[],
+      value: { title: string; code: string }
+    ) => {
+      if (!acc.find((v) => v.title === value.title)) {
+        acc.push(value);
+      }
+      return acc;
+    };
+
+    const qNM = [
+      ...endpoints[key].queries.reduce(filterDuplicates, []),
+      ...endpoints[key].mutations.reduce(filterDuplicates, []),
+    ];
+    const queriesAndMutations = qNM.reduce(
+      (acc, value) => {
+        const isMutation = value.code.includes(
+          "builder.mutation"
+        );
+        if (
+          !acc.find(
+            (v) =>
+              v.title === value.title &&
+              v.code.includes("builder.mutation") === isMutation
+          )
+        ) {
+          acc.push(value);
+        }
+        return acc;
+      },
+      [] as typeof qNM
+    );
     const formatted = await prettier.format(
       `
     import { baseApi } from './baseApi';
-    import { ${endpoints[key].types.join(", ")} } from './types';
+${
+  endpoints[key].types.length > 0
+    ? `import { ${[...new Set(endpoints[key].types)].join(
+        ", "
+      )} } from './types';`
+    : ""
+}
     
     export const ${apiName} = baseApi.injectEndpoints({
       endpoints: (builder) => ({
-        ${endpoints[key].queries.map((q) => q.code).join("")}
-        ${endpoints[key].mutations.map((q) => q.code).join("\n")}
+        ${queriesAndMutations.map((q) => q.code).join("")}
       }),
     })
     
-    export const { ${[
-      ...endpoints[key].queries,
-      ...endpoints[key].mutations,
-    ].map(
-      (n, i) =>
-        `use${firstLetterUpper(n.title).trim()}${
-          i > endpoints[key].queries.length - 1
-            ? "Mutation"
-            : "Query"
-        }`
-    )} } = ${apiName};`,
+    export const { ${queriesAndMutations
+      .map(
+        (n, i) =>
+          `use${firstLetterUpper(n.title).trim()}${
+            i >
+            endpoints[key].queries.reduce(filterDuplicates, [])
+              .length -
+              1
+              ? "Mutation"
+              : "Query"
+          }`
+      )
+      .join(",")} } = ${apiName};`,
       {
         parser: "typescript",
       }
