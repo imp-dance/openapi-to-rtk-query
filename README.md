@@ -9,7 +9,7 @@ Creates a endpoint type definition based on Open-API schema
 **Example**
 
 ```shell
-$  bunx --bun blup --src "https://developer.spotify.com/_data/documentation/web-api/reference/open-api-schema.yml"
+$  bunx --bun blup --src "https://developer.spotify.com/_data/documentation/web-api/reference/open-api-schema.yml" --outDir "./out"
 ```
 
 You might have to `link` the package. From the root directory: `bun link`.
