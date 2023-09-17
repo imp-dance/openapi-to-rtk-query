@@ -10,18 +10,6 @@ Creates a endpoint type definition based on Open-API schema
 
 ```shell
 $  bunx --bun blup --src "https://developer.spotify.com/_data/documentation/web-api/reference/open-api-schema.yml"
---------------------------------------------------------------------
-Fetching open-api spec
-Done! Resolved open-api spec
---------------------------------------------------------------------
-Parsing...
-Failed to parse open-api spec as JSON
-Trying to parse as YAML...
-Done!
---------------------------------------------------------------------
-Creating endpoints...
-Endpoints written to out.ts! ✅
---------------------------------------------------------------------
 ```
 
 You might have to `link` the package. From the root directory: `bun link`.

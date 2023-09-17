@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 
 import commandLineArgs from "command-line-args";
-import yaml from "yaml";
 import { OpenAPIV3_1 } from "openapi-types";
-import SwaggerClient from "swagger-client";
-import { startLoad, stopLoad } from "./src/load";
-import { generateEndpointCode } from "./src/generateEndpointCode";
 import * as prettier from "prettier";
-import { firstLetterUpper, firstLetterLower } from "./src/utils";
+import SwaggerClient from "swagger-client";
+import yaml from "yaml";
+import {
+  apiFromEndpoints,
+  parseOpenAPISchema,
+  generateTypeDefs,
+} from "./src/buildCode";
+import { startLoad, stopLoad } from "./src/load";
 
 const log = console.log;
 const divider =
@@ -44,8 +47,9 @@ const parseOpenApiSpec = async (spec: string) => {
   };
   try {
     res.data = JSON.parse(spec);
+    log("Parsed open-api spec as JSON ✅");
   } catch (err) {
-    log("Failed to parse open-api spec as JSON");
+    log("Failed to parse open-api spec as JSON ⛔️");
     log("Trying to parse as YAML...");
     try {
       const resolved = await SwaggerClient.resolve({
@@ -54,7 +58,7 @@ const parseOpenApiSpec = async (spec: string) => {
       res.data = resolved.spec;
       res.type = "YAML";
     } catch (err) {
-      log("Failed to parse open-api spec as YAML");
+      log("Failed to parse open-api spec as YAML ⛔️");
       log("Please provide a valid open-api spec");
       logDivider();
       log(err);
@@ -68,57 +72,71 @@ const parseOpenApiSpec = async (spec: string) => {
   };
 };
 
+async function writeTypes(typeDefs: Record<string, string>) {
+  const formattedTypes = await prettier.format(
+    Object.keys(typeDefs).reduce((acc, tag) => {
+      return acc + "export " + typeDefs[tag] + "\n";
+    }, ""),
+    { parser: "typescript" }
+  );
+  Bun.write("./out/types.ts", formattedTypes);
+}
+
 logDivider();
 log("Fetching open-api spec");
 startLoad();
 fetchOpenApiSpec()
   .then(async (spec) => {
-    stopLoad("Done! Resolved open-api spec");
+    stopLoad("Fetched openapi spec ✅");
     logDivider();
-    log("Parsing...");
-    const parsed = await parseOpenApiSpec(spec);
-    log("Done!");
-    logDivider();
-    log("Creating endpoints...");
-    startLoad();
-    const endpoints = await generateEndpointCode(parsed.data);
-    stopLoad("Done! Created endpoints");
-    for (const key of Object.keys(endpoints)) {
-      const formatted = await prettier.format(
-        `
-      import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react'
-      
-      export const ${firstLetterLower(key)}Api = createApi({
-        reducerPath: '${firstLetterLower(key)}Api',
-        tagTypes: ${JSON.stringify(endpoints[key].tags)},
-        baseQuery: fetchBaseQuery({ baseUrl: 'https://api.example.com' }),
-        endpoints: (builder) => ({
-          ${endpoints[key].queries.map((q) => q.code).join("")}
-          ${endpoints[key].mutations
-            .map((q) => q.code)
-            .join("\n")}
-        }),
-      })
-      
-      export const { ${[
-        ...endpoints[key].queries,
-        ...endpoints[key].mutations,
-      ].map(
-        (n, i) =>
-          `use${firstLetterUpper(n.title).trim()}${
-            i > endpoints[key].queries.length - 1
-              ? "Mutation"
-              : "Query"
-          }`
-      )} } = ${firstLetterLower(key)}Api;`,
-        {
-          parser: "typescript",
-        }
-      );
-      Bun.write(`./out/${key}.ts`, formatted);
-    }
 
-    log("Endpoints written to ./out ✅");
+    startLoad("Parsing...");
+    const parsed = await parseOpenApiSpec(spec);
+    const endpoints = await parseOpenAPISchema(parsed.data);
+    stopLoad("Parsed openapi spec ✅");
+
+    startLoad("Building base api...");
+    const allTags = [
+      ...new Set(
+        Object.keys(endpoints).reduce(
+          (acc, key) => [...acc, ...endpoints[key].tags],
+          [] as string[]
+        )
+      ),
+    ];
+    const baseApi = await prettier.format(
+      `
+    import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/dist/query/react";
+    const tags = [${allTags
+      .map((t) => `'${t}'`)
+      .join(", ")}] as const;
+    
+    export const baseApi = createApi({
+      tagTypes: tags,
+      reducerPath: "baseApi",
+      baseQuery: fetchBaseQuery({ baseUrl: "https://api.example.com" }),
+      endpoints: (builder) => ({}),
+    });
+    `,
+      { parser: "typescript" }
+    );
+    Bun.write(`./out/baseApi.ts`, baseApi);
+    stopLoad("Built base api ✅");
+
+    startLoad("Building APIs...");
+    const apis = await apiFromEndpoints(endpoints);
+    apis.forEach((api) => {
+      Bun.write(`./out/${api.name}.ts`, api.code);
+    });
+    stopLoad("Built APIs ✅");
+
+    startLoad("Writing types...");
+    const typeDefs = generateTypeDefs(parsed.data);
+    await writeTypes(typeDefs);
+    stopLoad("Wrote types ✅");
+    logDivider();
+
+    log("✅ Done!");
     logDivider();
   })
   .catch((err) => {
