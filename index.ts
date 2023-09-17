@@ -80,44 +80,33 @@ const getRelevantMethods = (test: Record<Method, any>) => {
 };
 // Generates RTK Query endpoints from an open-api spec
 const generateEndpoints = (spec: OpenAPIV3_1.Document) => {
-  let finalCode = "";
-  const paths = spec.paths ?? {};
-  const components = spec.components;
-  const schemas = components?.schemas;
-  const security = spec.security;
-  const securitySchemes = components?.securitySchemes;
-  const servers = spec.servers;
-  const tags = spec.tags;
-  const externalDocs = spec.externalDocs;
-  const info = spec.info;
-  tags?.forEach((tag) => {
-    const relevantEndpoints = Object.keys(paths)
-      .filter((path) => {
-        const pathItem = paths[path] ?? {};
-        return path.includes(`${tag.name}`.toLowerCase());
-      })
-      .map((path) => {
+  const flattenedPaths = Object.keys(spec.paths ?? {}).map(
+    (path) => {
+      const methods = getRelevantMethods(
+        spec.paths?.[path] as any
+      );
+      return methods.map((method) => {
         return {
-          path: path,
-          method: getRelevantMethods(paths[path] as any),
+          path,
+          method,
         };
       });
-    finalCode += `// ${tag.name}\n`;
-    if (tag.description) {
-      finalCode += `// ${tag.description}\n`;
     }
-    finalCode += `const ${tag.name}Api = createApi({\n`;
-    finalCode += `  reducerPath: "${tag.name}Api",\n`;
-    finalCode += `  baseQuery: fetchBaseQuery({ baseUrl: "" }),\n`;
-    finalCode += `  endpoints: (builder) => ({\n`;
-    finalCode += relevantEndpoints.map(({ path, method }) => {
-      return `${path}: builder.${
-        method[0] === "get" ? "query" : "mutation"
-      }({\n`;
-    });
-    finalCode += "\n";
-  });
-  return finalCode;
+  );
+
+  const parsePath = (path: string) => {
+    let replacedPath = path.replace(/\{(.+?)\}/g, "${string}");
+    if (replacedPath.endsWith("}")) {
+      replacedPath = replacedPath + "/";
+    }
+    return `\`${replacedPath}\``;
+  };
+
+  return `type Endpoint = ${flattenedPaths
+    .map((path) => parsePath(path[0].path))
+    .join(" | ")};
+    
+const endpoint = (endpoint: Endpoint) => endpoint`;
 };
 
 logDivider();
@@ -133,8 +122,8 @@ fetchOpenApiSpec()
     logDivider();
     console.log("Creating endpoints...");
     const endpoints = generateEndpoints(parsed.data);
-    Bun.write("out.js", endpoints);
-    console.log("Endpoints written to out.js! ✅");
+    Bun.write("out.ts", endpoints);
+    console.log("Endpoints written to out.ts! ✅");
     logDivider();
   })
   .catch((err) => {

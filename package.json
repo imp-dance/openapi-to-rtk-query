@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test-cli": "bunx --bun blup",
+    "blup": "bunx --bun blup",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
