@@ -24,6 +24,8 @@ Endpoints written to out.ts! ✅
 --------------------------------------------------------------------
 ```
 
+You might have to `link` the package. From the root directory: `bun link`.
+
 Creates the following `out.ts` file:
 
 ```typescript

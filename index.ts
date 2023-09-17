@@ -3,7 +3,11 @@
 import commandLineArgs from "command-line-args";
 import yaml from "yaml";
 import { OpenAPIV3_1 } from "openapi-types";
-const { startLoad, stopLoad } = require("./load");
+import SwaggerClient from "swagger-client";
+import { startLoad, stopLoad } from "./src/load";
+import { generateEndpointCode } from "./src/generateEndpointCode";
+import * as prettier from "prettier";
+import { firstLetterUpper, firstLetterLower } from "./src/utils";
 
 const log = console.log;
 const divider =
@@ -33,22 +37,28 @@ const fetchOpenApiSpec = async () => {
   return await spec.text();
 };
 
-const parseOpenApiSpec = (spec: string) => {
+const parseOpenApiSpec = async (spec: string) => {
   const res = {
     type: "JSON",
-    data: null,
+    data: null as null | OpenAPIV3_1.Document,
   };
   try {
     res.data = JSON.parse(spec);
   } catch (err) {
-    console.log("Failed to parse open-api spec as JSON");
-    console.log("Trying to parse as YAML...");
+    log("Failed to parse open-api spec as JSON");
+    log("Trying to parse as YAML...");
     try {
-      res.data = yaml.parse(spec);
+      const resolved = await SwaggerClient.resolve({
+        spec: yaml.parse(spec),
+      });
+      res.data = resolved.spec;
       res.type = "YAML";
     } catch (err) {
-      console.log("Failed to parse open-api spec as YAML");
-      console.log("Please provide a valid open-api spec");
+      log("Failed to parse open-api spec as YAML");
+      log("Please provide a valid open-api spec");
+      logDivider();
+      log(err);
+      logDivider();
       process.exit(1);
     }
   }
@@ -58,72 +68,57 @@ const parseOpenApiSpec = (spec: string) => {
   };
 };
 
-const resolveJSONRef = (
-  ref: string,
-  spec: OpenAPIV3_1.Document
-) => {
-  const refPath = ref.split("/");
-  refPath.shift();
-  let resolved: any = spec;
-  refPath.forEach((path) => {
-    resolved = resolved[path];
-  });
-  return resolved;
-};
-
-const getRelevantMethods = (test: Record<Method, any>) => {
-  return Object.keys(test).filter((key) => {
-    return ["get", "post", "put", "delete", "patch"].includes(
-      key
-    );
-  }) as Method[];
-};
-// Generates RTK Query endpoints from an open-api spec
-const generateEndpoints = (spec: OpenAPIV3_1.Document) => {
-  const flattenedPaths = Object.keys(spec.paths ?? {}).map(
-    (path) => {
-      const methods = getRelevantMethods(
-        spec.paths?.[path] as any
-      );
-      return methods.map((method) => {
-        return {
-          path,
-          method,
-        };
-      });
-    }
-  );
-
-  const parsePath = (path: string) => {
-    let replacedPath = path.replace(/\{(.+?)\}/g, "${string}");
-    if (replacedPath.endsWith("}")) {
-      replacedPath = replacedPath + "/";
-    }
-    return `\`${replacedPath}\``;
-  };
-
-  return `type Endpoint = ${flattenedPaths
-    .map((path) => parsePath(path[0].path))
-    .join(" | ")};
-    
-const endpoint = (endpoint: Endpoint) => endpoint`;
-};
-
 logDivider();
 log("Fetching open-api spec");
 startLoad();
 fetchOpenApiSpec()
-  .then((spec) => {
+  .then(async (spec) => {
     stopLoad("Done! Resolved open-api spec");
     logDivider();
-    console.log("Parsing...");
-    const parsed = parseOpenApiSpec(spec);
-    console.log("Done!");
+    log("Parsing...");
+    const parsed = await parseOpenApiSpec(spec);
+    log("Done!");
     logDivider();
-    console.log("Creating endpoints...");
-    const endpoints = generateEndpoints(parsed.data);
-    Bun.write("out.ts", endpoints);
-    console.log("Endpoints written to out.ts! ✅");
+    log("Creating endpoints...");
+    startLoad();
+    const endpoints = await generateEndpointCode(parsed.data);
+    stopLoad("Done! Created endpoints");
+    for (const key of Object.keys(endpoints)) {
+      const formatted = await prettier.format(
+        `
+      import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react'
+      
+      export const ${firstLetterLower(key)}Api = createApi({
+        reducerPath: '${firstLetterLower(key)}Api',
+        tagTypes: ${JSON.stringify(endpoints[key].tags)},
+        baseQuery: fetchBaseQuery({ baseUrl: 'https://api.example.com' }),
+        endpoints: (builder) => ({
+          ${endpoints[key].queries.map((q) => q.code).join("")}
+          ${endpoints[key].mutations
+            .map((q) => q.code)
+            .join("\n")}
+        }),
+      })
+      
+      export const { ${[
+        ...endpoints[key].queries,
+        ...endpoints[key].mutations,
+      ].map(
+        (n, i) =>
+          `use${firstLetterUpper(n.title).trim()}${
+            i > endpoints[key].queries.length - 1
+              ? "Mutation"
+              : "Query"
+          }`
+      )} } = ${firstLetterLower(key)}Api;`,
+        {
+          parser: "typescript",
+        }
+      );
+      Bun.write(`./out/${key}.ts`, formatted);
+    }
+
+    log("Endpoints written to ./out ✅");
     logDivider();
   })
   .catch((err) => {

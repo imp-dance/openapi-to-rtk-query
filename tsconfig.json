@@ -3,7 +3,7 @@
     "lib": ["ESNext"],
     "module": "esnext",
     "target": "esnext",
-    "moduleResolution": "Node",
+    "moduleResolution": "Bundler",
     "moduleDetection": "force",
     "noEmit": true,
     "composite": true,
@@ -19,5 +19,5 @@
     ],
     "outDir": "dist"
   },
-  "include": ["index.ts"]
+  "include": ["index.ts", "src/*.ts", "types.d.ts", "index.ts"]
 }
