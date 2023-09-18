@@ -2,13 +2,14 @@
 
 Creates **RTK Query** API code from an **OpenAPI 3.x schema**.
 
+> **This package is not yet published on NPM.**  
+> To install, clone the repository and run `bun link` in the root directory
+
 ## **Example**
 
 ```shell
 $  bunx --bun blup --src "https://developer.spotify.com/_data/documentation/web-api/reference/open-api-schema.yml" --outDir "./out"
 ```
-
-You might have to `link` the package. From the root directory: `bun link`.
 
 ### Set up API schema
 
