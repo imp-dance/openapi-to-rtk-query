@@ -11,6 +11,12 @@ Creates **RTK Query** API code from an **OpenAPI 3.x schema**.
 $  bunx --bun blup --src "https://developer.spotify.com/_data/documentation/web-api/reference/open-api-schema.yml" --outDir "./out"
 ```
 
+**CLI args**
+
+* **`--src`** (`-s`)*: The source of the OpenAPI schema. Can be a URL or a relative path. Make sure to start with `http`/`https` if it is a URL.
+* **`--outDir`** (`-o`)*: The output directory for the resulting files. Relative current working directory
+* **`--baseUrl`** (`-b`)?: The base URL for the API. Defaults to `https://api.example.com`. 
+
 ### Set up API schema
 
 > This tool will do its best to generate code that is usable even if your schema does not contains tags or summaries - but adding this will greatly enhance the quality of the code produced in regards to naming and categorizing the queries and mutations.
