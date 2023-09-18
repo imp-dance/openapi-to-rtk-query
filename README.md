@@ -2,7 +2,7 @@
 
 Creates **RTK Query** API code from an **OpenAPI 3.x schema**.
 
-> **This package is not yet published on NPM.**  
+> **This package is not (yet) published on NPM.**  
 > To install, clone the repository and run `bun link` in the root directory
 
 ## **Example**
