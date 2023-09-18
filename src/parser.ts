@@ -146,6 +146,12 @@ export async function parseOpenAPISchema(
       "No tags found in schema, trying to organize by first path segment"
     );
   }
+  if (!apiSchema.openapi.trim().startsWith("3")) {
+    throw new Error(
+      "Only OpenAPI 3.x.x is supported at this time"
+    );
+  }
+
   tags.forEach((tag) => {
     builder[tag] = {
       queries: [],
@@ -236,7 +242,9 @@ export async function parseOpenAPISchema(
 }
 
 export async function apiFromEndpoints(
-  endpoints: Awaited<ReturnType<typeof parseOpenAPISchema>>
+  endpoints: NonNullable<
+    Awaited<ReturnType<typeof parseOpenAPISchema>>
+  >
 ) {
   const apis: {
     name: string;

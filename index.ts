@@ -30,12 +30,20 @@ const options = commandLineArgs([
     type: String,
     multiple: false,
   },
+  {
+    name: "baseUrl",
+    alias: "b",
+    type: String,
+    defaultValue: "https://api.example.com",
+  },
 ]) as {
   src: string;
   outDir: string;
+  baseUrl: string;
 };
 
 const outputDir = `${process.cwd()}/${options.outDir}`;
+const srcDir = `${process.cwd()}/${options.src}`;
 
 const fetchOpenApiSpec = async () => {
   if (!options.src) {
@@ -57,7 +65,7 @@ const fetchOpenApiSpec = async () => {
     }
   }
   try {
-    const file = Bun.file(options.src);
+    const file = Bun.file(srcDir);
     return await file.text();
   } catch (err) {
     log("Failed to read open-api spec ⛔️");
@@ -145,7 +153,9 @@ fetchOpenApiSpec()
     export const baseApi = createApi({
       tagTypes: tags,
       reducerPath: "baseApi",
-      baseQuery: fetchBaseQuery({ baseUrl: "https://api.example.com" }),
+      baseQuery: fetchBaseQuery({ baseUrl: "${
+        options.baseUrl
+      }" }),
       endpoints: (builder) => ({}),
     });
     `,
