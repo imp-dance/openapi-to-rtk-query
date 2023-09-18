@@ -1,4 +1,4 @@
-# bun blup
+# openapi-to-rtk-query
 
 Creates **RTK Query** API code from an **OpenAPI 3.x schema**.
 
