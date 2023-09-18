@@ -10,6 +10,34 @@ $  bunx --bun blup --src "https://developer.spotify.com/_data/documentation/web-
 
 You might have to `link` the package. From the root directory: `bun link`.
 
+### Set up API schema
+
+> This tool will do its best to generate code that is usable even if your schema does not contains tags or summaries - but adding this will greatly enhance the quality of the code produced in regards to naming and categorizing the queries and mutations.
+
+#### Tags
+
+To get the most out of this utility, your openapi schema should [utilize tags](https://swagger.io/docs/specification/grouping-operations-with-tags/).
+Tags should be defined both at top level, and used in the relevant endpoints that you want to group into one API.
+
+We might generate the same query in multiple places if you add multiple tags, but that will also mean that query invalidation will work better - and it's a quick
+job for you to remove duplicate endpoints from the APIs that you don't want it in afterwards.
+
+If you don't have tags in your schema, we will use the first path segment to group your endpoints, which might be sub-optimal.
+
+#### Summary
+
+Your endpoints should contain a summary. This summary will be used to name your queries and mutations:
+
+```typescript
+"Create User"
+// ==>
+useCreateUserQuery();
+
+"Update multiple users"
+// ==>
+useUpdateMultipleUsersMutation();
+```
+
 ### Example output
 
 **_marketsApi.ts_**
