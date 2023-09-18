@@ -1,6 +1,6 @@
 # bun blup
 
-Creates RTK query api definitions based on a OpenAPI 3.x schema.
+Creates **RTK Query** API code from an **OpenAPI 3.x schema**.
 
 ## **Example**
 
