@@ -47,6 +47,8 @@ useUpdateMultipleUsersMutation();
 
 ### Example output
 
+You can check out the [out folder](https://github.com/imp-dance/openapi-to-rtk-query/tree/main/out) to see a full example output, when executed on the [Spotify OpenAPI schema](https://developer.spotify.com/reference/web-api/open-api-schema.yaml).
+
 **_marketsApi.ts_**
 ```typescript 
 import { baseApi } from "./baseApi";
