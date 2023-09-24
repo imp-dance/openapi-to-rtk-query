@@ -2,8 +2,7 @@
 
 Creates **RTK Query** API code from an **OpenAPI 3.x schema**.
 
-> **This package is not (yet) published on NPM.**  
-> To install, clone the repository and run `bun link` in the root directory
+>  If you are actually looking for a service like this, you should use [RTK Query's official codegen guide](https://redux-toolkit.js.org/rtk-query/usage/code-generation). This is just a test project.
 
 ## **Example**
 
